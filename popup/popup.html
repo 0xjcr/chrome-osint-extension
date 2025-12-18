@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PostEvent OSINT</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>PostEvent OSINT</h1>
+      <p class="subtitle">IP Threat Intelligence</p>
+    </header>
+
+    <form id="search-form">
+      <div class="input-group">
+        <input
+          type="text"
+          id="ip-input"
+          placeholder="Enter IP address (e.g., 8.8.8.8)"
+          pattern="^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+          required
+        >
+        <button type="submit" id="search-btn">
+          <span class="btn-text">Search</span>
+          <span class="btn-loading hidden">
+            <span class="spinner"></span>
+          </span>
+        </button>
+      </div>
+      <p id="error-message" class="error hidden"></p>
+    </form>
+
+    <div id="results" class="results hidden">
+      <!-- VirusTotal Card -->
+      <div class="card" id="virustotal-card">
+        <div class="card-header">
+          <h2>VirusTotal</h2>
+          <span class="status-badge" id="vt-status"></span>
+        </div>
+        <div class="card-body" id="vt-body">
+          <div class="loading-placeholder">
+            <span class="spinner"></span>
+            <span>Fetching data...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- IPInfo Card -->
+      <div class="card" id="ipinfo-card">
+        <div class="card-header">
+          <h2>IPInfo</h2>
+          <span class="status-badge" id="ipinfo-status"></span>
+        </div>
+        <div class="card-body" id="ipinfo-body">
+          <div class="loading-placeholder">
+            <span class="spinner"></span>
+            <span>Fetching data...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- AbuseIPDB Card -->
+      <div class="card" id="abuseipdb-card">
+        <div class="card-header">
+          <h2>AbuseIPDB</h2>
+          <span class="status-badge" id="abuseipdb-status"></span>
+        </div>
+        <div class="card-body" id="abuseipdb-body">
+          <div class="loading-placeholder">
+            <span class="spinner"></span>
+            <span>Fetching data...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
