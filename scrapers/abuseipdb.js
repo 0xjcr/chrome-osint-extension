@@ -100,25 +100,32 @@ export async function scrapeAbuseIPDB(ip) {
           }
         }
 
-        // Extract from well-structured elements
-        // AbuseIPDB uses specific sections for IP details
-        const detailRows = document.querySelectorAll('tr, .detail-row, [class*="info-row"]');
-        detailRows.forEach(row => {
-          const text = row.textContent;
-          const textLower = text.toLowerCase();
+        // Extract from well-structured table elements
+        // AbuseIPDB uses a table with th/td pairs
+        const tableRows = document.querySelectorAll('table tr');
+        tableRows.forEach(row => {
+          const th = row.querySelector('th');
+          const td = row.querySelector('td');
+          if (th && td) {
+            const label = th.textContent.trim().toLowerCase();
+            const value = td.textContent.trim();
 
-          // Try to split by common patterns
-          if (textLower.includes('isp') && !result.isp) {
-            const match = text.match(/ISP[:\\s]+(.+)/i);
-            if (match) result.isp = match[1].trim().split('\\n')[0];
-          }
-          if (textLower.includes('usage type') && !result.usageType) {
-            const match = text.match(/Usage Type[:\\s]+(.+)/i);
-            if (match) result.usageType = match[1].trim().split('\\n')[0];
-          }
-          if (textLower.includes('domain') && !result.domain) {
-            const match = text.match(/Domain[:\\s]+([a-zA-Z0-9.-]+)/i);
-            if (match) result.domain = match[1].trim();
+            if (label === 'isp' && !result.isp) {
+              result.isp = value;
+            }
+            if (label === 'usage type' && !result.usageType) {
+              result.usageType = value;
+            }
+            if (label === 'domain name' && !result.domain) {
+              result.domain = value;
+            }
+            if (label === 'country' && !result.countryCode) {
+              // Remove flag emoji and clean up
+              result.countryCode = value.replace(/[\\u{1F1E0}-\\u{1F1FF}]/gu, '').trim();
+            }
+            if (label === 'hostname(s)' && !result.hostname) {
+              result.hostname = value.split('\\n')[0].trim();
+            }
           }
         });
 
