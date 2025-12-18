@@ -16,17 +16,79 @@ export async function scrapeVirusTotal(ip) {
   try {
     page = await createPage();
 
+    // Inject stealth scripts BEFORE navigation to mask automation detection
+    await page.injectStealthScripts();
+
     // Navigate to VirusTotal IP page
     const url = `https://www.virustotal.com/gui/ip-address/${ip}`;
     await page.goto(url, { timeout: 30000 });
 
-    // Wait for the page to load (VirusTotal is a heavy SPA, needs more time)
-    await page.sleep(6000);
+    // VirusTotal is a heavy SPA - wait for content to actually render
+    // First, wait a base amount for initial JS to load
+    await page.sleep(3000);
+
+    // Helper function to traverse shadow DOM and get all text content
+    // VirusTotal uses Polymer web components with shadow DOM
+    const getAllTextContent = `
+      (function getAllTextContent(root = document.body) {
+        let text = '';
+        function traverse(node) {
+          if (node.shadowRoot) {
+            traverse(node.shadowRoot);
+          }
+          if (node.nodeType === Node.TEXT_NODE) {
+            text += node.textContent + ' ';
+          }
+          if (node.childNodes) {
+            for (const child of node.childNodes) {
+              traverse(child);
+            }
+          }
+        }
+        traverse(root);
+        return text;
+      })()
+    `;
+
+    // Then poll for content to appear (up to 15 seconds total)
+    // Must check shadow DOM since VirusTotal uses web components
+    let attempts = 0;
+    const maxAttempts = 12;
+    while (attempts < maxAttempts) {
+      const textLength = await page.evaluate(getAllTextContent + '.length');
+      if (textLength > 100) break;
+      await page.sleep(1000);
+      attempts++;
+    }
 
     // Try to extract data using various selectors
     // VirusTotal's DOM structure can vary, so we try multiple approaches
     const data = await page.evaluate(`
       (function() {
+        // Helper to traverse shadow DOM
+        function getAllTextContent(root = document.body) {
+          let text = '';
+          function traverse(node) {
+            if (node.shadowRoot) {
+              traverse(node.shadowRoot);
+            }
+            if (node.nodeType === Node.TEXT_NODE) {
+              text += node.textContent + ' ';
+            }
+            if (node.childNodes) {
+              for (const child of node.childNodes) {
+                traverse(child);
+              }
+            }
+          }
+          traverse(root);
+          return text;
+        }
+
+        const pageText = getAllTextContent();
+        // Normalize whitespace for easier pattern matching
+        const normalizedText = pageText.replace(/\\s+/g, ' ').trim();
+
         const result = {
           detections: null,
           reputation: null,
@@ -36,34 +98,33 @@ export async function scrapeVirusTotal(ip) {
           warning: null
         };
 
-        const pageText = document.body.innerText;
+        // Check for CAPTCHA or challenge page (use normalized text for matching)
+        // Be very specific to avoid false positives - only trigger on actual CAPTCHA pages
+        const hasCaptcha = document.querySelector('.g-recaptcha[data-sitekey], #captcha-container');
 
-        // Check for CAPTCHA or challenge page
-        if (pageText.toLowerCase().includes('captcha') ||
-            pageText.toLowerCase().includes('verify you are human') ||
-            pageText.toLowerCase().includes('unusual traffic') ||
-            document.querySelector('.captchaContainer, [class*="captcha"]')) {
+        if (hasCaptcha) {
           result.warning = 'CAPTCHA or verification required - please visit VirusTotal directly';
           return result;
         }
 
-        // Check if page loaded properly
-        if (pageText.length < 500) {
+        // Check if page loaded properly (use normalized length)
+        if (normalizedText.length < 500) {
           result.warning = 'Page did not load properly - VirusTotal may be blocking automated access';
           return result;
         }
 
         // Try to find detection stats using multiple patterns
-        // Pattern 1: Look for "X / Y" format (malicious / total)
+        // VT shows format like "0 / 94" or "1/94 security vendors"
         const detectionPatterns = [
           /(\\d+)\\s*\\/\\s*(\\d+)\\s*(?:security\\s+vendors?|engines?)/i,
+          /(\\d+)\\s*\\/\\s*(\\d+)/,  // Simple X/Y format
           /(\\d+)\\s+security\\s+vendors?.*(?:flagged|detected|malicious)/i,
           /flagged.*?(\\d+)\\s*\\/\\s*(\\d+)/i,
           /(\\d+)\\s*malicious/i
         ];
 
         for (const pattern of detectionPatterns) {
-          const match = pageText.match(pattern);
+          const match = normalizedText.match(pattern);
           if (match) {
             if (match[2]) {
               result.detections = {
@@ -104,7 +165,7 @@ export async function scrapeVirusTotal(ip) {
         ];
 
         for (const pattern of repPatterns) {
-          const match = pageText.match(pattern);
+          const match = normalizedText.match(pattern);
           if (match) {
             result.reputation = parseInt(match[1]);
             break;
@@ -133,7 +194,7 @@ export async function scrapeVirusTotal(ip) {
         ];
 
         for (const pattern of datePatterns) {
-          const match = pageText.match(pattern);
+          const match = normalizedText.match(pattern);
           if (match) {
             result.lastAnalysis = match[1].substring(0, 10);
             break;
@@ -153,31 +214,35 @@ export async function scrapeVirusTotal(ip) {
           });
         }
 
-        // Try to find AS owner
+        // Try to find AS owner - VT format: "AS 15169 ( GOOGLE )"
         const asPatterns = [
-          /AS\\s*(\\d+)\\s+([A-Za-z][^\\n]{2,50})/,
+          /AS\\s*(\\d+)\\s*\\(\\s*([^)]+)\\s*\\)/i,  // AS 15169 ( GOOGLE )
+          /AS\\s*(\\d+)\\s+([A-Za-z][A-Za-z0-9\\s]{2,30})/,
           /autonomous\\s+system[:\\s]+([^\\n]+)/i,
           /ASN[:\\s]+([^\\n]+)/i
         ];
 
         for (const pattern of asPatterns) {
-          const match = pageText.match(pattern);
+          const match = normalizedText.match(pattern);
           if (match) {
+            // If we matched the parentheses format, use group 2 (name), otherwise group 1
             result.asOwner = (match[2] || match[1]).trim();
             break;
           }
         }
 
-        // Try to find country
+        // Try to find country - VT shows country code like "US" after AS info
+        // Format: "AS 15169 ( GOOGLE ) US"
         const countryPatterns = [
+          /\\(\\s*[A-Z]+\\s*\\)\\s+([A-Z]{2})\\s/,  // After AS owner in parens: ") US "
           /country[:\\s]+([A-Za-z\\s]+)/i,
           /located\\s+in[:\\s]+([A-Za-z\\s]+)/i
         ];
 
         for (const pattern of countryPatterns) {
-          const match = pageText.match(pattern);
+          const match = normalizedText.match(pattern);
           if (match) {
-            result.country = match[1].trim().split('\\n')[0];
+            result.country = match[1].trim().split(' ')[0];
             break;
           }
         }
