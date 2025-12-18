@@ -17,6 +17,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Return true to indicate we'll send a response asynchronously
     return true;
   }
+
+  if (request.action === 'retry') {
+    handleRetry(request.ip, request.source)
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
 });
 
 /**
@@ -28,8 +35,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function handleLookup(ip) {
   console.log(`Starting OSINT lookup for IP: ${ip}`);
 
-  // Store the search query
-  await chrome.storage.local.set({ lastSearch: ip });
+  // Store the search query (non-blocking, log errors)
+  chrome.storage.local.set({ lastSearch: ip }).catch(err => {
+    console.warn('Failed to save search query:', err);
+  });
 
   // Run all scrapers in parallel
   const [virustotalResult, ipinfoResult, abuseipdbResult] = await Promise.allSettled([
@@ -45,12 +54,42 @@ async function handleLookup(ip) {
     abuseipdb: processResult(abuseipdbResult, 'AbuseIPDB')
   };
 
-  // Store results
-  await chrome.storage.local.set({ lastResults: results });
+  // Store results (non-blocking, log errors)
+  chrome.storage.local.set({ lastResults: results }).catch(err => {
+    console.warn('Failed to save results:', err);
+  });
 
   console.log('OSINT lookup complete:', results);
 
   return results;
+}
+
+/**
+ * Handle retry request for a single source
+ * @param {string} ip - The IP address to look up
+ * @param {string} source - The source to retry (virustotal, ipinfo, abuseipdb)
+ * @returns {Promise<object>} Result from the source
+ */
+async function handleRetry(ip, source) {
+  const scrapers = {
+    virustotal: scrapeVirusTotal,
+    ipinfo: scrapeIPInfo,
+    abuseipdb: scrapeAbuseIPDB
+  };
+
+  const scraper = scrapers[source];
+  if (!scraper) {
+    return { error: 'Unknown source' };
+  }
+
+  console.log(`Retrying ${source} lookup for IP: ${ip}`);
+
+  try {
+    return await scraper(ip);
+  } catch (err) {
+    console.error(`${source} retry failed:`, err);
+    return { error: err.message || 'Retry failed' };
+  }
 }
 
 /**

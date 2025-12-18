@@ -114,7 +114,9 @@ export async function scrapeIPInfo(ip) {
             if (json.provider && json.provider.name && !result.org) {
               result.org = json.provider.name;
             }
-          } catch (e) {}
+          } catch (e) {
+            console.warn('Failed to parse JSON-LD:', e);
+          }
         }
 
         // Secondary method: Parse page text for remaining fields

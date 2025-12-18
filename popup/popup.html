@@ -4,17 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PostEvent OSINT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>PostEvent OSINT</h1>
-      <p class="subtitle">IP Threat Intelligence</p>
+      <div class="brand">
+        <img src="../icons/icon48.png" alt="PostEvent OSINT" class="brand-icon">
+        <div class="brand-text">
+          <h1>PostEvent OSINT</h1>
+          <p class="subtitle">IP Threat Intelligence</p>
+        </div>
+      </div>
     </header>
 
     <form id="search-form">
-      <div class="input-group">
+      <div class="search-container">
         <input
           type="text"
           id="ip-input"
@@ -32,11 +40,21 @@
       <p id="error-message" class="error hidden"></p>
     </form>
 
-    <div id="results" class="results hidden">
+    <div id="results-wrapper" class="results-wrapper">
+      <div id="results" class="results">
       <!-- VirusTotal Card -->
       <div class="card" id="virustotal-card">
         <div class="card-header">
-          <h2>VirusTotal</h2>
+          <div class="card-title">
+            <h2>VirusTotal</h2>
+            <a href="#" class="external-link" id="vt-link" target="_blank" title="Open in VirusTotal">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </a>
+          </div>
           <span class="status-badge" id="vt-status"></span>
         </div>
         <div class="card-body" id="vt-body">
@@ -50,7 +68,16 @@
       <!-- IPInfo Card -->
       <div class="card" id="ipinfo-card">
         <div class="card-header">
-          <h2>IPInfo</h2>
+          <div class="card-title">
+            <h2>IPInfo</h2>
+            <a href="#" class="external-link" id="ipinfo-link" target="_blank" title="Open in IPInfo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </a>
+          </div>
           <span class="status-badge" id="ipinfo-status"></span>
         </div>
         <div class="card-body" id="ipinfo-body">
@@ -64,7 +91,16 @@
       <!-- AbuseIPDB Card -->
       <div class="card" id="abuseipdb-card">
         <div class="card-header">
-          <h2>AbuseIPDB</h2>
+          <div class="card-title">
+            <h2>AbuseIPDB</h2>
+            <a href="#" class="external-link" id="abuseipdb-link" target="_blank" title="Open in AbuseIPDB">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </a>
+          </div>
           <span class="status-badge" id="abuseipdb-status"></span>
         </div>
         <div class="card-body" id="abuseipdb-body">
@@ -73,6 +109,7 @@
             <span>Fetching data...</span>
           </div>
         </div>
+      </div>
       </div>
     </div>
   </div>

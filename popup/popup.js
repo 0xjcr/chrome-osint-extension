@@ -5,23 +5,43 @@ const searchBtn = document.getElementById('search-btn');
 const btnText = searchBtn.querySelector('.btn-text');
 const btnLoading = searchBtn.querySelector('.btn-loading');
 const errorMessage = document.getElementById('error-message');
+const resultsWrapper = document.getElementById('results-wrapper');
 const resultsContainer = document.getElementById('results');
 
 // Card elements
 const cards = {
   virustotal: {
     status: document.getElementById('vt-status'),
-    body: document.getElementById('vt-body')
+    body: document.getElementById('vt-body'),
+    link: document.getElementById('vt-link')
   },
   ipinfo: {
     status: document.getElementById('ipinfo-status'),
-    body: document.getElementById('ipinfo-body')
+    body: document.getElementById('ipinfo-body'),
+    link: document.getElementById('ipinfo-link')
   },
   abuseipdb: {
     status: document.getElementById('abuseipdb-status'),
-    body: document.getElementById('abuseipdb-body')
+    body: document.getElementById('abuseipdb-body'),
+    link: document.getElementById('abuseipdb-link')
   }
 };
+
+// External link URLs
+const sourceUrls = {
+  virustotal: (ip) => `https://www.virustotal.com/gui/ip-address/${ip}`,
+  ipinfo: (ip) => `https://ipinfo.io/${ip}`,
+  abuseipdb: (ip) => `https://www.abuseipdb.com/check/${ip}`
+};
+
+// Update external links for an IP
+function updateExternalLinks(ip) {
+  Object.entries(cards).forEach(([source, card]) => {
+    if (card.link && sourceUrls[source]) {
+      card.link.href = sourceUrls[source](ip);
+    }
+  });
+}
 
 // Validate IP address
 function isValidIP(ip) {
@@ -48,6 +68,23 @@ function hideError() {
   errorMessage.classList.add('hidden');
 }
 
+// Helper to prevent XSS
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Send message with timeout to prevent indefinite loading
+function sendMessageWithTimeout(message, timeoutMs = 60000) {
+  return Promise.race([
+    chrome.runtime.sendMessage(message),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out')), timeoutMs)
+    )
+  ]);
+}
+
 // Reset cards to loading state
 function resetCards() {
   Object.values(cards).forEach(card => {
@@ -70,7 +107,15 @@ function updateCard(source, data) {
   if (data.error) {
     card.status.textContent = 'Error';
     card.status.className = 'status-badge error';
-    card.body.innerHTML = `<div class="error-message">${data.error}</div>`;
+    card.body.innerHTML = `
+      <div class="error-content">
+        <div class="error-message">
+          <span class="error-icon">&#9888;</span>
+          <span>${escapeHtml(data.error)}</span>
+        </div>
+        <button class="retry-btn" data-source="${source}">Retry</button>
+      </div>
+    `;
     return;
   }
 
@@ -193,15 +238,16 @@ searchForm.addEventListener('submit', async (e) => {
   }
 
   setLoading(true);
-  resultsContainer.classList.remove('hidden');
+  resultsWrapper.classList.add('expanded');
   resetCards();
+  updateExternalLinks(ip);
 
   try {
     // Send message to background script
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendMessageWithTimeout({
       action: 'lookup',
       ip: ip
-    });
+    }, 60000);
 
     if (response.error) {
       showError(response.error);
@@ -220,14 +266,56 @@ searchForm.addEventListener('submit', async (e) => {
 });
 
 // Load last search from storage
-chrome.storage.local.get(['lastSearch', 'lastResults'], (data) => {
-  if (data.lastSearch) {
-    ipInput.value = data.lastSearch;
-  }
-  if (data.lastResults) {
-    resultsContainer.classList.remove('hidden');
-    if (data.lastResults.virustotal) updateCard('virustotal', data.lastResults.virustotal);
-    if (data.lastResults.ipinfo) updateCard('ipinfo', data.lastResults.ipinfo);
-    if (data.lastResults.abuseipdb) updateCard('abuseipdb', data.lastResults.abuseipdb);
+chrome.storage.local.get(['lastSearch', 'lastResults'])
+  .then(data => {
+    if (data.lastSearch) {
+      ipInput.value = data.lastSearch;
+      updateExternalLinks(data.lastSearch);
+    }
+    if (data.lastResults) {
+      resultsWrapper.classList.add('expanded');
+      if (data.lastResults.virustotal) updateCard('virustotal', data.lastResults.virustotal);
+      if (data.lastResults.ipinfo) updateCard('ipinfo', data.lastResults.ipinfo);
+      if (data.lastResults.abuseipdb) updateCard('abuseipdb', data.lastResults.abuseipdb);
+    }
+  })
+  .catch(err => {
+    console.warn('Failed to load previous search:', err);
+  });
+
+// Handle retry button clicks
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('retry-btn')) {
+    const source = e.target.dataset.source;
+    const ip = ipInput.value.trim();
+
+    if (!ip || !isValidIP(ip)) return;
+
+    // Set card to loading
+    const card = cards[source];
+    card.status.textContent = 'Loading';
+    card.status.className = 'status-badge loading';
+    card.body.innerHTML = `
+      <div class="loading-placeholder">
+        <span class="spinner"></span>
+        <span>Retrying...</span>
+      </div>
+    `;
+
+    try {
+      const response = await sendMessageWithTimeout({
+        action: 'retry',
+        ip: ip,
+        source: source
+      }, 60000);
+
+      if (response.error) {
+        updateCard(source, { error: response.error });
+      } else {
+        updateCard(source, response);
+      }
+    } catch (err) {
+      updateCard(source, { error: 'Retry failed: ' + err.message });
+    }
   }
 });
